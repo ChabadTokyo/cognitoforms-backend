@@ -7,8 +7,8 @@ const app = express();
 app.use(cors()); // Allow frontend requests
 const PORT = process.env.PORT || 3000;
 
-const credentials = JSON.parse(fs.readFileSync("./credentials.json"));
-const SHEET_ID = "YOUR_SHEET_ID_HERE";
+const credentials = JSON.parse(process.env.CREDENTIALS_JSON);
+const SHEET_ID = process.env.SHEET_ID;
 const SHEET_RANGE = "Sheet1!A2:R"; // adjust if your sheet/tab is named differently
 
 async function getAttendanceByDate(targetDate) {
