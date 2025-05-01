@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 
 const credentials = JSON.parse(process.env.CREDENTIALS_JSON);
 const SHEET_ID = process.env.SHEET_ID;
-const SHEET_RANGE = "Sheet1!A2:R"; // adjust if your sheet/tab is named differently
+const SHEET_RANGE = "main!A2:R"; // adjust if your sheet/tab is named differently
 
 async function getAttendanceByDate(targetDate) {
   const auth = new google.auth.GoogleAuth({
@@ -36,8 +36,19 @@ async function getAttendanceByDate(targetDate) {
   };
 
   for (const row of rows) {
-    const signupDate = new Date(row[5]).toISOString().split("T")[0]; // Column F (index 5)
-    if (signupDate !== targetDate) continue;
+    // Convert JS Date to M/D/YYYY format (no leading zeros)
+    function formatToMDY(date) {
+      const d = new Date(date);
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      const year = d.getFullYear();
+      return `${month}/${day}/${year}`;
+}
+
+const rowDate = row[5]; // Raw sheet value like "3/17/2023"
+const inputDate = formatToMDY(targetDate); // Converts ISO to M/D/YYYY
+
+if (rowDate !== inputDate) continue;
 
     const safeNum = (val) => parseInt(val || "0", 10);
 
