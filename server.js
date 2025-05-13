@@ -6,6 +6,7 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 app.post('/register', async (req, res) => {
