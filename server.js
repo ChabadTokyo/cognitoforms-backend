@@ -8,31 +8,37 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-app.post('/register', async (req, res) => {
-  console.log("📦 Received Form Data:", req.body);
-  res.json({ message: "Data received. Check console." });
-});
-/*
-// Stripe + NocoDB Integration
 app.post('/register', async (req, res) => {
   try {
-    const {
-      name, email, phone, date, meal,
-      adults, kids, discount, donation,
-      discount_amount, comments, amount
-    } = req.body;
+    const fields = req.body.fields;
+
+    const name = fields.name?.value || '';
+    const email = fields.email?.value || '';
+    const phone = fields.phone?.value || '';
+    const date = fields.date?.value || '';
+    const meal = fields.meal?.value || '';
+    const adults = parseInt(fields.adults?.value) || 0;
+    const kids = parseInt(fields.kids?.value) || 0;
+    const discount = !!fields.discount?.value;
+    const discountAmount = parseFloat(fields.discount_amount?.value) || 0;
+    const donation = parseFloat(fields.donation?.value) || 0;
+    const comments = fields.comments?.value || '';
+    const amount = parseFloat(fields.amount?.value) || 0;
 
     // Step 1: Create Stripe PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // amount in cents
+      amount: Math.round(amount * 100), // Stripe uses cents
       currency: 'usd',
-      description: `Shabbat registration for ${name}`,
+      description: `Shabbat reservation for ${name}`,
       receipt_email: email,
-      metadata: { name, email, phone }
+      metadata: {
+        name,
+        email,
+        phone
+      }
     });
 
-    // Step 2: Save to NocoDB with status: pending
+    // Step 2: Log to NocoDB
     await axios.post(process.env.NOCO_API_URL, {
       Name: name,
       Email: email,
@@ -43,7 +49,7 @@ app.post('/register', async (req, res) => {
       Kids: kids,
       Discount: discount,
       Donation: donation,
-      DiscountAmount: discount_amount,
+      DiscountAmount: discountAmount,
       Comments: comments,
       Amount: amount,
       StripePaymentID: paymentIntent.id,
@@ -54,15 +60,15 @@ app.post('/register', async (req, res) => {
       }
     });
 
-    // Return client secret to frontend
+    // Step 3: Return Stripe clientSecret to frontend
     res.json({ clientSecret: paymentIntent.client_secret });
 
   } catch (error) {
-    console.error('❌ Error:', error.message);
-    res.status(500).json({ error: 'Failed to register and create payment.' });
+    console.error('❌ Stripe/NocoDB Error:', error.message);
+    res.status(500).json({ error: 'Server error during registration.' });
   }
 });
-*/
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
