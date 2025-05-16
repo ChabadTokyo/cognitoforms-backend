@@ -1,3 +1,17 @@
+// server.js
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const axios = require('axios');
+const Stripe = require('stripe');
+
+const app = express();
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 app.post('/register', async (req, res) => {
   try {
     const fields = req.body.fields;
@@ -15,17 +29,8 @@ app.post('/register', async (req, res) => {
     const comments = fields.comments?.value || '';
     const amount = parseFloat(fields.amount?.value) || 0;
 
-    // Step 1: Create PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100),
-      currency: 'usd',
-      description: `Shabbat Reservation - ${meal} (${name})`,
-      receipt_email: email,
-      metadata: { name, email, phone }
-    });
-
-    // Step 2: Log to NocoDB with proper field names
-    const record = await axios.post(process.env.NOCO_API_URL, {
+    // Step 1: Create NocoDB record (status: Pending)
+    const nocoRes = await axios.post(process.env.NOCO_API_URL, {
       "Name": name,
       "Email": email,
       "Phone": phone,
@@ -38,46 +43,43 @@ app.post('/register', async (req, res) => {
       "Discounted Price": discountAmount,
       "Comments": comments,
       "Total Amount": amount,
-      "StripePaymentID": paymentIntent.id,
-      "PaymentStatus": "Pending" // must match case-sensitive dropdown value
+      "PaymentStatus": "Pending"
     }, {
-      headers: {
-        'xc-token': process.env.NOCO_API_TOKEN
-      }
+      headers: { 'xc-token': process.env.NOCO_API_TOKEN }
     });
 
-    const recordId = record.data.Id || record.data.id;
+    const recordId = nocoRes.data.Id || nocoRes.data.id;
 
-    // Step 3: Create Stripe Checkout session
+    // Step 2: Create Stripe Checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
       customer_email: email,
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            unit_amount: Math.round(amount * 100),
-            product_data: {
-              name: `Shabbat Reservation - ${meal}`
-            }
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          unit_amount: Math.round(amount * 100),
+          product_data: {
+            name: `Shabbat Reservation - ${meal} (${name})`
           },
-          quantity: 1
-        }
-      ],
-      metadata: {
-        nocodb_record_id: recordId
-      },
+        },
+        quantity: 1
+      }],
+      metadata: { nocodb_record_id: recordId },
       success_url: 'https://yourdomain.org/thank-you?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://yourdomain.org/shabbat-form?canceled=1'
+      cancel_url: 'https://yourdomain.org/shabbat-form?canceled=1',
     });
 
-    // Step 4: Redirect to Stripe Checkout
+    // Step 3: Return Stripe checkout URL to frontend
     res.json({ url: session.url });
 
   } catch (err) {
-    console.error("❌ Stripe/NocoDB Error:", err.message);
-    res.status(500).json({ error: "Registration failed." });
+    console.error("❌ /register error:", err.message);
+    res.status(500).json({ error: "Registration failed" });
   }
 });
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
