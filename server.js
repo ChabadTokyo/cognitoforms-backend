@@ -32,11 +32,11 @@ app.post('/register', async (req, res) => {
     const nocoRes = await axios.post(process.env.NOCO_API_URL, {
       "Name": name,
       "Email": email,
-      "Phone": phone,
+      "Phone Number": phone,
       "Shabbat Date": date,
       "Meals": meal,
       "Adults": adults,
-      "ChildernKids": kids,
+      "Childern/Students": kids,
       "Discount": discount,
       "Donation": donation,
       "Discounted Price": discountAmount,
@@ -65,8 +65,8 @@ app.post('/register', async (req, res) => {
         quantity: 1
       }],
       metadata: { nocodb_record_id: recordId },
-      success_url: 'https://yourdomain.org/thank-you?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://yourdomain.org/shabbat-form?canceled=1',
+      success_url: 'https://chabadjapan.org/thank-you?session_id={CHECKOUT_SESSION_ID}',
+      cancel_url: 'https://chabadjapan.org/shabbat-form?canceled=1',
     });
 
     // Step 3: Return Stripe checkout URL to frontend
