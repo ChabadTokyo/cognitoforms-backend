@@ -62,14 +62,14 @@ app.post('/register', async (req, res) => {
       "Shabbat Date": date,
       "Meals": meal,
       "Adults": adults,
-      "ChildernKids": kids,
+      "Childern/Students": kids,
       "Discount": discount,
       "Discounted Price": discountAmount,
       "Donation": donation,
       "Comments": comments,
       "Total Amount": amount,
       "StripePaymentID": session.id,
-      "PaymentStatus": "Pending"
+      "Payment Status": "Pending"
     }, {
       headers: {
         'xc-token': process.env.NOCO_API_TOKEN
