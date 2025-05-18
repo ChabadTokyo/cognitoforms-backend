@@ -78,7 +78,7 @@ app.post('/register', async (req, res) => {
 
     res.json({ url: session.url });
 
-  } caZch (err) {
+  } catch (err) {
     console.error("❌ /register error:", err.message);
     res.status(500).json({ error: "Registration failed" });
   }
