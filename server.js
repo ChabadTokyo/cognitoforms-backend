@@ -1,16 +1,19 @@
-// server.js
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const Stripe = require('stripe');
-
 const app = express();
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
+// Stripe
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
+// ---------- REGISTER ROUTE ----------
 app.post('/register', async (req, res) => {
   try {
     const fields = req.body.fields;
@@ -28,28 +31,7 @@ app.post('/register', async (req, res) => {
     const comments = fields.comments?.value || '';
     const amount = parseFloat(fields.amount?.value) || 0;
 
-    // Step 1: Create NocoDB record (status: Pending)
-    const nocoRes = await axios.post(process.env.NOCO_API_URL, {
-      "Name": name,
-      "Email": email,
-      "Phone Number": phone,
-      "Shabbat Date": date,
-      "Meals": meal,
-      "Adults": adults,
-      "Childern/Students": kids,
-      "Discount": discount,
-      "Donation": donation,
-      "Discounted Price": discountAmount,
-      "Comments": comments,
-      "Total Amount": amount,
-      "PaymentStatus": "Pending"
-    }, {
-      headers: { 'xc-token': process.env.NOCO_API_TOKEN }
-    });
-
-    const recordId = nocoRes.data.Id || nocoRes.data.id;
-
-    // Step 2: Create Stripe Checkout session
+    // Create Stripe Checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
@@ -59,17 +41,42 @@ app.post('/register', async (req, res) => {
           currency: 'usd',
           unit_amount: Math.round(amount * 100),
           product_data: {
-            name: `Shabbat Reservation - ${meal} (${name})`
+            name: `Shabbat Reservation - ${meal}`
           },
         },
         quantity: 1
       }],
-      metadata: { nocodb_record_id: recordId },
-      success_url: 'https://chabadjapan.org/thank-you?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://chabadjapan.org/shabbat-form?canceled=1',
+      metadata: {
+        name,
+        email,
+        phone
+      },
+      success_url: 'https://yourdomain.org/thank-you?session_id={CHECKOUT_SESSION_ID}',
+      cancel_url: 'https://yourdomain.org/shabbat-form?canceled=1',
     });
 
-    // Step 3: Return Stripe checkout URL to frontend
+    // Save to NocoDB
+    const record = await axios.post(process.env.NOCO_API_URL, {
+      "Name": name,
+      "Email": email,
+      "Phone": phone,
+      "Shabbat Date": date,
+      "Meals": meal,
+      "Adults": adults,
+      "ChildernKids": kids,
+      "Discount": discount,
+      "Discounted Price": discountAmount,
+      "Donation": donation,
+      "Comments": comments,
+      "Total Amount": amount,
+      "StripePaymentID": session.id,
+      "PaymentStatus": "Pending"
+    }, {
+      headers: {
+        'xc-token': process.env.NOCO_API_TOKEN
+      }
+    });
+
     res.json({ url: session.url });
 
   } catch (err) {
@@ -78,7 +85,43 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// Start server
+// ---------- WEBHOOK ROUTE ----------
+app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+  } catch (err) {
+    console.error("❌ Webhook signature verification failed:", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle successful payment
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+
+    try {
+      await axios.patch(`${process.env.NOCO_API_URL}?where=StripePaymentID,eq,${session.id}`, {
+        "PaymentStatus": "Succeeded"
+      }, {
+        headers: {
+          'xc-token': process.env.NOCO_API_TOKEN
+        }
+      });
+
+      console.log(`✅ Payment succeeded — record with session ${session.id} updated.`);
+    } catch (err) {
+      console.error("❌ Failed to update NocoDB record:", err.message);
+    }
+  }
+
+  res.status(200).json({ received: true });
+});
+
+// ---------- START SERVER ----------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
 
