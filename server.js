@@ -10,7 +10,13 @@ const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use((req, res, next) => {
+  if (req.originalUrl === '/webhook') {
+    next(); // skip body parsing for webhook
+  } else {
+    express.json()(req, res, next); // parse JSON for all other routes
+  }
+});
 
 // ---------- REGISTER ROUTE ----------
 app.post('/register', async (req, res) => {
@@ -87,8 +93,8 @@ app.post('/register', async (req, res) => {
 // ---------- WEBHOOK ROUTE ----------
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
-  let event;
 
+  let event;
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
   } catch (err) {
@@ -96,9 +102,10 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle successful payment
+  // ✅ If success
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
+    console.log("✅ Received successful checkout.session:", session.id);
 
     try {
       await axios.patch(`${process.env.NOCO_API_URL}?where=StripePaymentID,eq,${session.id}`, {
@@ -109,14 +116,15 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
         }
       });
 
-      console.log(`✅ Payment succeeded — record with session ${session.id} updated.`);
+      console.log(`✅ NocoDB updated for Stripe session ${session.id}`);
     } catch (err) {
-      console.error("❌ Failed to update NocoDB record:", err.message);
+      console.error("❌ Failed to update NocoDB:", err.message);
     }
   }
 
   res.status(200).json({ received: true });
 });
+
 
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 3000;
