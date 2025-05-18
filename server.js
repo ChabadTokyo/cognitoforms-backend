@@ -50,19 +50,19 @@ app.post('/register', async (req, res) => {
         email,
         phone
       },
-      success_url: 'https://yourdomain.org/thank-you?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://yourdomain.org/shabbat-form?canceled=1',
+      success_url: 'https://chabadjapan.org/thank-you?session_id={CHECKOUT_SESSION_ID}',
+      cancel_url: 'https://chabadjapan.org/shabbat-form?canceled=1',
     });
 
     // Save to NocoDB
     const record = await axios.post(process.env.NOCO_API_URL, {
       "Name": name,
       "Email": email,
-      "Phone": phone,
+      "Phone Number": phone,
       "Shabbat Date": date,
       "Meals": meal,
       "Adults": adults,
-      "Childern/Students": kids,
+      "Childern": kids,
       "Discount": discount,
       "Discounted Price": discountAmount,
       "Donation": donation,
@@ -78,7 +78,7 @@ app.post('/register', async (req, res) => {
 
     res.json({ url: session.url });
 
-  } catch (err) {
+  } caZch (err) {
     console.error("❌ /register error:", err.message);
     res.status(500).json({ error: "Registration failed" });
   }
