@@ -1,27 +1,28 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const Stripe = require('stripe');
 const app = express();
 
-// Stripe
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-// Middleware
+// Middleware setup
+app.use('/webhook', express.raw({ type: 'application/json' }));
+app.use(express.json());
 app.use(cors());
-app.use((req, res, next) => {
-  if (req.originalUrl === '/webhook') {
-    next(); // skip body parsing for webhook
-  } else {
-    express.json()(req, res, next); // parse JSON for all other routes
-  }
-});
 
 // ---------- REGISTER ROUTE ----------
 app.post('/register', async (req, res) => {
   try {
     const fields = req.body.fields;
+    if (!fields) {
+      console.error("❌ Missing fields in request body");
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    console.log("✅ Parsed fields:", fields);
 
     const name = fields.name?.value || '';
     const email = fields.email?.value || '';
@@ -36,7 +37,45 @@ app.post('/register', async (req, res) => {
     const comments = fields.comments?.value || '';
     const amount = parseFloat(fields.amount?.value) || 0;
 
-    // Create Stripe Checkout session
+    if (!name || !email || !date || amount <= 0) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Create NocoDB record
+    const payload = {
+      "Name": name,
+      "Email": email,
+      "Phone": phone,
+      "Shabbat Date": date,
+      "Meals": meal,
+      "Adults": adults,
+      "ChildernKids": kids,
+      "Discount": discount,
+      "Discounted Price": discountAmount,
+      "Donation": donation,
+      "Comments": comments,
+      "Total Amount": amount,
+      "StripePaymentID": "test",
+      "PaymentStatus": "Pending"
+    };
+
+    let record;
+    try {
+      record = await axios.post(process.env.NOCO_API_URL, payload, {
+        headers: {
+          'xc-token': process.env.NOCO_API_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      });
+    } catch (e) {
+      console.error("❌ NocoDB POST failed:", e.response?.status, e.response?.data);
+      return res.status(500).json({ error: "NocoDB create failed", details: e.response?.data });
+    }
+
+    const recordId = record.data.Id || record.data.id;
+    console.log("📝 NocoDB record ID:", recordId);
+
+    // Create Stripe session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
@@ -52,49 +91,28 @@ app.post('/register', async (req, res) => {
         quantity: 1
       }],
       metadata: {
+        nocodb_record_id: recordId,
         name,
         email,
         phone
       },
-      success_url: 'https://chabadjapan.org/thank-you?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://chabadjapan.org/shabbat-form?canceled=1',
+      success_url: 'https://chabadjapan.org/shabbat',
+      cancel_url: 'https://chabadjapan.org/fkld',
     });
 
-    // Save to NocoDB
-    const record = await axios.post(process.env.NOCO_API_URL, {
-      "Name": name,
-      "Email": email,
-      "Phone Number": phone,
-      "Shabbat Date": date,
-      "Meals": meal,
-      "Adults": adults,
-      "Childern": kids,
-      "Discount": discount,
-      "Discounted Price": discountAmount,
-      "Donation": donation,
-      "Comments": comments,
-      "Total Amount": amount,
-      "StripePaymentID": session.id,
-      "Payment Status": "Pending"
-    }, {
-      headers: {
-        'xc-token': process.env.NOCO_API_TOKEN
-      }
-    });
-
-    res.json({ url: session.url });
+    return res.json({ url: session.url });
 
   } catch (err) {
     console.error("❌ /register error:", err.message);
-    res.status(500).json({ error: "Registration failed" });
+    return res.status(500).json({ error: "Registration failed" });
   }
 });
 
 // ---------- WEBHOOK ROUTE ----------
-app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/webhook', async (req, res) => {
   const sig = req.headers['stripe-signature'];
-
   let event;
+
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
   } catch (err) {
@@ -102,29 +120,38 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // ✅ If success
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    console.log("✅ Received successful checkout.session:", session.id);
+    console.log("✅ Stripe checkout.session completed:", session.id);
+
+    const recordId = session.metadata?.nocodb_record_id;
+    if (!recordId) {
+      console.warn("⚠️ No recordId in session metadata");
+      return res.status(400).send("Missing record ID");
+    }
 
     try {
-      await axios.patch(`${process.env.NOCO_API_URL}?where=StripePaymentID,eq,${session.id}`, {
-        "PaymentStatus": "Succeeded"
-      }, {
+      await axios.patch(process.env.NOCO_API_URL, [
+        {
+          Id: recordId,
+          PaymentStatus: "Succeeded",
+          StripePaymentID: session.id
+        }
+      ], {
         headers: {
-          'xc-token': process.env.NOCO_API_TOKEN
+          'xc-token': process.env.NOCO_API_TOKEN,
+          'Content-Type': 'application/json'
         }
       });
 
-      console.log(`✅ NocoDB updated for Stripe session ${session.id}`);
+      console.log(`✅ NocoDB updated for record ${recordId}`);
     } catch (err) {
-      console.error("❌ Failed to update NocoDB:", err.message);
+      console.error("❌ Failed to update NocoDB:", err.response?.data || err.message);
     }
   }
 
   res.status(200).json({ received: true });
 });
-
 
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 3000;
