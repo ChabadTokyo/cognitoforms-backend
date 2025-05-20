@@ -79,22 +79,23 @@ app.post('/register', async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
-      customer_email: email,
+      customer_email: data.email,
       line_items: [{
         price_data: {
           currency: 'usd',
           unit_amount: Math.round(amount * 100),
           product_data: {
-            name: `Shabbat Reservation - ${meal}`
+            name: `Shabbat Reservation - ${meal}`,
+            description: `Reservation for ${data.name}`
           },
         },
         quantity: 1
       }],
       metadata: {
         nocodb_record_id: recordId,
-        name,
-        email,
-        phone
+        name: data.name,
+        email: data.email,
+        phone: data.phone
       },
       success_url: 'https://chabadjapan.org/shabbat',
       cancel_url: 'https://chabadjapan.org/fkld',
