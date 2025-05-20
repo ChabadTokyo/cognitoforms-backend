@@ -45,18 +45,18 @@ app.post('/register', async (req, res) => {
     const payload = {
       "Name": name,
       "Email": email,
-      "Phone": phone,
+      "Phone Number": phone,
       "Shabbat Date": date,
       "Meals": meal,
       "Adults": adults,
-      "ChildernKids": kids,
+      "Children": kids,
       "Discount": discount,
       "Discounted Price": discountAmount,
       "Donation": donation,
       "Comments": comments,
       "Total Amount": amount,
       "StripePaymentID": "test",
-      "PaymentStatus": "Pending"
+      "Payment Status": "Pending"
     };
 
     let record;
