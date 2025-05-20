@@ -133,9 +133,9 @@ app.post('/webhook', async (req, res) => {
     try {
       await axios.patch(process.env.NOCO_API_URL, [
         {
-          Id: recordId,
-          PaymentStatus: "Succeeded",
-          StripePaymentID: session.id
+          "Id": recordId,
+          "Payment Status": "Succeeded",
+          "StripePaymentID": session.id
         }
       ], {
         headers: {
